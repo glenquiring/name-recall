@@ -118,11 +118,11 @@ export default function Auth() {
 
     if (isSignUp) {
       const { error: err } = await supabase.auth.signUp({ email, password });
-      if (err) setError(err.message);
+      if (err) setError("Unable to create account. Please check your details and try again.");
       else setSuccess("Check your email to confirm your account.");
     } else {
       const { error: err } = await supabase.auth.signInWithPassword({ email, password });
-      if (err) setError(err.message);
+      if (err) setError("Invalid email or password.");
     }
     setLoading(false);
   }

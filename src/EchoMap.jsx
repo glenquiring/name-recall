@@ -333,21 +333,20 @@ export default function EchoMap() {
         .echomap-root, .echomap-root *, .echomap-root *::before, .echomap-root *::after { box-sizing: border-box; margin: 0; padding: 0; }
         .echomap-root {
           background: #040d1a;
-          min-height: 80vh;
           display: flex;
           align-items: center;
           justify-content: center;
           font-family: 'Syne', sans-serif;
           border-radius: 12px;
           margin: -16px;
-          padding: 16px;
+          padding: 12px;
         }
         .echomap-root .em-app {
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 20px;
-          padding: 28px 20px 36px;
+          gap: 12px;
+          padding: 16px 12px 20px;
           width: 100%;
           max-width: 480px;
           margin: 0 auto;
@@ -375,7 +374,7 @@ export default function EchoMap() {
         .echomap-root .logo {
           font-family: 'Syne', sans-serif;
           font-weight: 800;
-          font-size: 2rem;
+          font-size: 1.5rem;
           letter-spacing: 0.15em;
           color: #e8f4ff;
           text-transform: uppercase;
@@ -401,11 +400,11 @@ export default function EchoMap() {
           background: rgba(255,255,255,0.03);
           border: 1px solid rgba(255,255,255,0.07);
           border-radius: 10px;
-          padding: 10px 8px;
+          padding: 6px 6px;
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 3px;
+          gap: 2px;
         }
         .echomap-root .stat-label {
           font-family: 'Space Mono', monospace;
@@ -488,16 +487,16 @@ export default function EchoMap() {
         .echomap-root .grid {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
-          gap: 10px;
-          padding: 18px;
+          gap: clamp(6px, 2vw, 10px);
+          padding: clamp(10px, 3vw, 18px);
           background: rgba(255,255,255,0.02);
           border: 1px solid rgba(255,255,255,0.06);
           border-radius: 20px;
           box-shadow: 0 0 60px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05);
         }
         .echomap-root .cell {
-          width: 72px;
-          height: 72px;
+          width: clamp(52px, 16vw, 72px);
+          height: clamp(52px, 16vw, 72px);
           border-radius: 12px;
           background: rgba(10,30,60,0.8);
           border: 1px solid rgba(0,150,220,0.12);
@@ -760,8 +759,27 @@ export default function EchoMap() {
         .echomap-root .tip-text b { color: #0090b8; }
 
         @media (max-width: 400px) {
-          .echomap-root .cell { width: 62px; height: 62px; }
-          .echomap-root .grid { gap: 8px; padding: 14px; }
+          .echomap-root .em-app { gap: 8px; padding: 10px 8px 14px; }
+          .echomap-root .logo { font-size: 1.2rem; }
+          .echomap-root .tagline { font-size: 0.55rem; }
+          .echomap-root .stat { padding: 4px 4px; }
+          .echomap-root .stat-value { font-size: 0.9rem; }
+          .echomap-root .stat-label { font-size: 0.45rem; }
+          .echomap-root .idle-desc { font-size: 0.58rem; line-height: 1.7; }
+          .echomap-root .em-btn { padding: 12px 28px; font-size: 0.8rem; }
+        }
+        @media (max-height: 700px) {
+          .echomap-root .em-app { gap: 6px; padding: 8px 8px 12px; }
+          .echomap-root .em-header { gap: 2px; }
+          .echomap-root .logo { font-size: 1.1rem; }
+          .echomap-root .tagline { display: none; }
+          .echomap-root .stat { padding: 4px 4px; }
+          .echomap-root .stat-value { font-size: 0.85rem; }
+          .echomap-root .idle-desc { font-size: 0.56rem; line-height: 1.6; }
+          .echomap-root .idle-desc br + br { display: none; }
+          .echomap-root .em-btn { padding: 10px 24px; font-size: 0.78rem; }
+          .echomap-root .over-score { font-size: 1.6rem; }
+          .echomap-root .over-title { font-size: 1rem; }
         }
       `}</style>
 
@@ -886,16 +904,23 @@ export default function EchoMap() {
         {isIdle && (
           <div className="idle-content">
             <div className="idle-desc">
-              Watch the pattern of lights and tones.<br />
-              Reproduce it from memory.<br /><br />
+              Watch the pattern. Reproduce it from memory.<br />
               <b>Speed increases only when you succeed.</b><br />
-              <b>One replay available per round.</b><br />
-              Sequences grow slowly — master each length<br />
-              before moving on.
+              <b>One replay per round.</b>
             </div>
             <button className="em-btn em-btn-primary" onClick={beginGame}>
               Begin Training
             </button>
+            <button className="tip-toggle" onClick={() => setShowTip(t => !t)}>
+              {showTip ? "Hide" : "Why this works"} ↓
+            </button>
+            {showTip && (
+              <div className="tip-box">
+                <div className="tip-text">
+                  <b>Echo Map trains multimodal binding</b> — linking visual location, spatial memory, and auditory tone into a single chunk. <b>Speed increases only on correct responses</b>, so your pace reflects actual capacity. The <b>replay option</b> mirrors spaced repetition logic.
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -918,19 +943,6 @@ export default function EchoMap() {
           <div className="legend">
             <div className="legend-item"><div className="legend-dot dot-blue" />Flash + Tone</div>
             <div className="legend-item"><div className="legend-dot dot-purple" />Flash only</div>
-          </div>
-        )}
-
-        <button className="tip-toggle" onClick={() => setShowTip(t => !t)}>
-          {showTip ? "Hide" : "Why this works"} ↓
-        </button>
-
-        {showTip && (
-          <div className="tip-box">
-            <div className="tip-text">
-              <b>Echo Map trains multimodal binding</b> — the same neural process used when encoding a name at first contact. Each round forces your brain to link visual location, spatial memory, and auditory tone into a single chunk.<br /><br />
-              <b>Speed increases only on correct responses</b> — your pace reflects actual capacity, not a fixed clock. The <b>replay option</b> lets you re-encode the sequence once per round, mirroring spaced repetition logic. Both build the attentional control that helps you slow down enough to truly encode what you hear.
-            </div>
           </div>
         )}
 

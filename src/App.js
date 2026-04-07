@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import EchoMap from "./EchoMap";
-import { supabase } from "./supabaseClient";
+import { supabase, supabaseUrl } from "./supabaseClient";
 
 const css = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -215,12 +215,27 @@ textarea { resize: vertical; min-height: 60px; }
 const CONTEXTS = ["Board","Donor","Foundation","Sponsor","Colleague","Volunteer","Prospect","Partner","Staff","Other"];
 const BLANK = { name:"", context:"Donor", photo:"", visual:"", hook:"", met:"" };
 
-const STORAGE_URL = "https://thyzfnfzohwckfdoupvq.supabase.co/storage/v1/object/public/photos";
+const STORAGE_URL = `${supabaseUrl}/storage/v1/object/public/photos`;
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5 MB
+
+function validateImageFile(file) {
+  if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+    throw new Error("Only JPEG, PNG, GIF, and WebP images are allowed.");
+  }
+  if (file.size > MAX_PHOTO_SIZE) {
+    throw new Error("Photo must be under 5 MB.");
+  }
+}
 
 async function uploadPhoto(file, userId) {
-  const ext = file.name.split(".").pop();
-  const path = `${userId}/${Date.now()}.${ext}`;
-  const { error } = await supabase.storage.from("photos").upload(path, file);
+  validateImageFile(file);
+  const ext = file.type.split("/")[1] === "jpeg" ? "jpg" : file.type.split("/")[1];
+  const uuid = crypto.randomUUID();
+  const path = `${userId}/${uuid}.${ext}`;
+  const { error } = await supabase.storage.from("photos").upload(path, file, {
+    contentType: file.type,
+  });
   if (error) throw error;
   return `${STORAGE_URL}/${path}`;
 }
@@ -267,33 +282,31 @@ function PhotoField({ value, onChange, userId }) {
   const [urlErr, setUrlErr] = useState(false);
   const [uploading, setUploading] = useState(false);
 
+  const [uploadErr, setUploadErr] = useState("");
+
   async function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
     e.target.value = "";
+    setUploadErr("");
     if (userId) {
       setUploading(true);
       try {
         const url = await uploadPhoto(file, userId);
         onChange(url);
       } catch (err) {
-        console.error("Upload failed:", err);
-        // Fallback to base64
-        const reader = new FileReader();
-        reader.onload = ev => onChange(ev.target.result);
-        reader.readAsDataURL(file);
+        setUploadErr(err.message || "Upload failed. Please try again.");
       }
       setUploading(false);
     } else {
-      const reader = new FileReader();
-      reader.onload = ev => onChange(ev.target.result);
-      reader.readAsDataURL(file);
+      setUploadErr("You must be signed in to upload photos.");
     }
   }
 
   function commitUrl(v) {
     const t = v.trim();
     if (!t) { onChange(""); setUrlErr(false); return; }
+    if (!t.startsWith("https://")) { setUrlErr(true); return; }
     const img = new Image();
     img.onload = () => { onChange(t); setUrlErr(false); };
     img.onerror = () => setUrlErr(true);
@@ -303,6 +316,7 @@ function PhotoField({ value, onChange, userId }) {
   return (
     <div>
       <input id={id} type="file" accept="image/*" className="photo-file-input" onChange={handleFile} />
+      {uploadErr && <div style={{fontSize:12,color:"#cc0000",marginBottom:6}}>{uploadErr}</div>}
       {uploading ? (
         <div style={{fontSize:13,color:"#003399",padding:"10px 0"}}>Uploading photo...</div>
       ) : value ? (
@@ -333,7 +347,7 @@ function PhotoField({ value, onChange, userId }) {
             onBlur={e=>commitUrl(e.target.value)}
             placeholder="Paste image URL here..."
           />
-          {urlErr && <div style={{fontSize:12,color:"#cc0000",marginTop:3}}>Couldn't load that URL — try a direct image link</div>}
+          {urlErr && <div style={{fontSize:12,color:"#cc0000",marginTop:3}}>Enter a valid https:// image URL</div>}
           <div className="hint">Google Photos → Share → Copy link</div>
         </div>
       )}
@@ -548,7 +562,7 @@ export default function App({ session }) {
       hook: f.hook || null,
       met: f.met || null,
     };
-    const { error } = await supabase.from("people").update(updates).eq("id", id);
+    const { error } = await supabase.from("people").update(updates).eq("id", id).eq("user_id", userId);
     if (!error) setPeople(ps=>ps.map(p=>p.id===id?{...p,...updates, photo: updates.photo_url || ""}:p));
     setEditingId(null);
   }
@@ -556,8 +570,8 @@ export default function App({ session }) {
     if(!window.confirm("Remove this contact?")) return;
     const person = people.find(p=>p.id===id);
     if (person?.photo) await deletePhoto(person.photo);
-    await supabase.from("scores").delete().eq("person_id", id);
-    const { error } = await supabase.from("people").delete().eq("id", id);
+    await supabase.from("scores").delete().eq("person_id", id).eq("user_id", userId);
+    const { error } = await supabase.from("people").delete().eq("id", id).eq("user_id", userId);
     if (!error) setPeople(ps=>ps.filter(p=>p.id!==id));
   }
 
