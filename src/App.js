@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import EchoMap from "./EchoMap";
+import { supabase } from "./supabaseClient";
 
 const css = `
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -213,11 +214,22 @@ textarea { resize: vertical; min-height: 60px; }
 
 const CONTEXTS = ["Board","Donor","Foundation","Sponsor","Colleague","Volunteer","Prospect","Partner","Staff","Other"];
 const BLANK = { name:"", context:"Donor", photo:"", visual:"", hook:"", met:"" };
-const SAMPLE = [
-  { id:1, name:"Margaret Chen", context:"Board", photo:"", visual:"Silver bob haircut, silk scarf", hook:"Chairs governance committee, passionate about equity in arts access", met:"Fall gala, two years ago" },
-  { id:2, name:"Robert Ashford", context:"Donor", photo:"", visual:"Tall, wire-rim glasses, firm handshake", hook:"Major gift prospect, education programs, retired CFO", met:"Donor cultivation luncheon, spring" },
-  { id:3, name:"Patricia Voss", context:"Foundation", photo:"", visual:"Petite, direct eye contact, always early", hook:"Executive committee, former attorney, sharp governance questions", met:"First foundation board meeting" },
-];
+
+const STORAGE_URL = "https://thyzfnfzohwckfdoupvq.supabase.co/storage/v1/object/public/photos";
+
+async function uploadPhoto(file, userId) {
+  const ext = file.name.split(".").pop();
+  const path = `${userId}/${Date.now()}.${ext}`;
+  const { error } = await supabase.storage.from("photos").upload(path, file);
+  if (error) throw error;
+  return `${STORAGE_URL}/${path}`;
+}
+
+async function deletePhoto(url) {
+  if (!url || !url.includes("/storage/")) return;
+  const path = url.split("/photos/")[1];
+  if (path) await supabase.storage.from("photos").remove([path]);
+}
 
 function shuffle(arr) {
   const a=[...arr];
@@ -248,19 +260,35 @@ function getCtxChoices(correct,all){
 }
 
 let uid=0;
-function PhotoField({ value, onChange }) {
+function PhotoField({ value, onChange, userId }) {
   const id = useRef("pf-"+(++uid)).current;
   const [urlMode, setUrlMode] = useState(false);
   const [urlVal, setUrlVal] = useState("");
   const [urlErr, setUrlErr] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
-  function handleFile(e) {
+  async function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = ev => onChange(ev.target.result);
-    reader.readAsDataURL(file);
     e.target.value = "";
+    if (userId) {
+      setUploading(true);
+      try {
+        const url = await uploadPhoto(file, userId);
+        onChange(url);
+      } catch (err) {
+        console.error("Upload failed:", err);
+        // Fallback to base64
+        const reader = new FileReader();
+        reader.onload = ev => onChange(ev.target.result);
+        reader.readAsDataURL(file);
+      }
+      setUploading(false);
+    } else {
+      const reader = new FileReader();
+      reader.onload = ev => onChange(ev.target.result);
+      reader.readAsDataURL(file);
+    }
   }
 
   function commitUrl(v) {
@@ -275,7 +303,9 @@ function PhotoField({ value, onChange }) {
   return (
     <div>
       <input id={id} type="file" accept="image/*" className="photo-file-input" onChange={handleFile} />
-      {value ? (
+      {uploading ? (
+        <div style={{fontSize:13,color:"#003399",padding:"10px 0"}}>Uploading photo...</div>
+      ) : value ? (
         <div className="photo-preview">
           <img src={value} alt="preview" onError={e=>e.target.style.display="none"} />
           <div style={{flex:1}}>
@@ -311,7 +341,7 @@ function PhotoField({ value, onChange }) {
   );
 }
 
-function ContactForm({ initial, onSave, onCancel, saveLabel }) {
+function ContactForm({ initial, onSave, onCancel, saveLabel, userId }) {
   const [f, setF] = useState({...initial});
   const set = k => v => setF(p=>({...p,[k]:v}));
   const valid = f.name.trim().length > 0;
@@ -334,7 +364,7 @@ function ContactForm({ initial, onSave, onCancel, saveLabel }) {
       </div>
       <div className="field">
         <label className="lbl">Photo</label>
-        <PhotoField value={f.photo} onChange={set("photo")} />
+        <PhotoField value={f.photo} onChange={set("photo")} userId={userId} />
         <div className="hint">The face is the strongest anchor — snap one right after meeting.</div>
       </div>
       <div className="field">
@@ -365,13 +395,14 @@ function ContactForm({ initial, onSave, onCancel, saveLabel }) {
   );
 }
 
-export default function App() {
+export default function App({ session }) {
+  const userId = session.user.id;
   const [tab, setTab] = useState("roster");
-  const [people, setPeople] = useState(SAMPLE);
-  const [nextId, setNextId] = useState(20);
+  const [people, setPeople] = useState([]);
   const [scores, setScores] = useState({});
   const [editingId, setEditingId] = useState(null);
   const [isFs, setIsFs] = useState(false);
+  const [loading, setLoading] = useState(true);
   const appRef = useRef(null);
 
   const [mode, setMode] = useState("name");
@@ -391,6 +422,34 @@ export default function App() {
   const [over, setOver] = useState(false);
   const inputRef = useRef(null);
   const pauseTimer = useRef(null);
+
+  // Load people and scores from Supabase
+  const loadData = useCallback(async () => {
+    const { data: ppl } = await supabase
+      .from("people")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true });
+
+    const { data: sc } = await supabase
+      .from("scores")
+      .select("*")
+      .eq("user_id", userId);
+
+    if (ppl) setPeople(ppl.map(p => ({ ...p, photo: p.photo_url || "" })));
+    if (sc) {
+      const map = {};
+      sc.forEach(s => { map[s.person_id] = s.level; });
+      setScores(map);
+    }
+    setLoading(false);
+  }, [userId]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+  }
 
   function toggleFs() {
     if (!document.fullscreenElement) appRef.current?.requestFullscreen().catch(()=>{});
@@ -428,9 +487,15 @@ export default function App() {
     setTimeout(()=>inputRef.current?.focus(),80);
   }
   function recordResult(id,ok){
-    setScores(s=>({...s,[id]:Math.max(0,Math.min(4,(s[id]??0)+(ok?1:-1)))}));
+    const newLevel = Math.max(0,Math.min(4,(scores[id]??0)+(ok?1:-1)));
+    setScores(s=>({...s,[id]:newLevel}));
     if(ok){setCorrect(c=>c+1);setStreak(s=>{const ns=s+1;setBestStreak(b=>Math.max(b,ns));return ns;});}
     else{setWrong(w=>w+1);setStreak(0);}
+    // Persist score
+    supabase.from("scores").upsert(
+      { person_id: id, user_id: userId, level: newLevel, updated_at: new Date().toISOString() },
+      { onConflict: "person_id,user_id" }
+    ).then();
   }
   function submitName(){
     if(!answer.trim()||fb)return;
@@ -461,9 +526,40 @@ export default function App() {
     if(mode==="name"){if(!fb)submitName();else next();}
   }
 
-  function addPerson(f){setPeople(p=>[...p,{id:nextId,...f,name:f.name.trim()}]);setNextId(n=>n+1);}
-  function savePerson(id,f){setPeople(ps=>ps.map(p=>p.id===id?{...p,...f,name:f.name.trim()}:p));setEditingId(null);}
-  function deletePerson(id){if(window.confirm("Remove this contact?"))setPeople(ps=>ps.filter(p=>p.id!==id));}
+  async function addPerson(f){
+    const row = {
+      user_id: userId,
+      name: f.name.trim(),
+      context: f.context,
+      photo_url: f.photo || null,
+      visual: f.visual || null,
+      hook: f.hook || null,
+      met: f.met || null,
+    };
+    const { data, error } = await supabase.from("people").insert(row).select().single();
+    if (!error && data) setPeople(p=>[...p,{...data, photo: data.photo_url || ""}]);
+  }
+  async function savePerson(id,f){
+    const updates = {
+      name: f.name.trim(),
+      context: f.context,
+      photo_url: f.photo || null,
+      visual: f.visual || null,
+      hook: f.hook || null,
+      met: f.met || null,
+    };
+    const { error } = await supabase.from("people").update(updates).eq("id", id);
+    if (!error) setPeople(ps=>ps.map(p=>p.id===id?{...p,...updates, photo: updates.photo_url || ""}:p));
+    setEditingId(null);
+  }
+  async function deletePerson(id){
+    if(!window.confirm("Remove this contact?")) return;
+    const person = people.find(p=>p.id===id);
+    if (person?.photo) await deletePhoto(person.photo);
+    await supabase.from("scores").delete().eq("person_id", id);
+    const { error } = await supabase.from("people").delete().eq("id", id);
+    if (!error) setPeople(ps=>ps.filter(p=>p.id!==id));
+  }
 
   function pips(id){
     const lvl=scores[id]??0;
@@ -490,6 +586,7 @@ export default function App() {
       <div className="header">
         <h1>Name Recall</h1>
         <button className="fs-btn" onClick={toggleFs}>{isFs?"✕ Exit":"⤢ Full Screen"}</button>
+        <button className="fs-btn" onClick={handleSignOut}>Sign Out</button>
       </div>
       <div className="tabs">
         {[["roster","Roster ("+people.length+")"],["game","Practice"],["echomap","Echo Map"]].map(([t,l])=>(
@@ -497,14 +594,16 @@ export default function App() {
         ))}
       </div>
       <div className="content">
-        {tab==="roster"&&<>
+        {loading && <div style={{textAlign:"center",padding:"40px 0",color:"#999"}}>Loading...</div>}
+        {!loading && tab==="roster"&&<>
           <div className="add-panel">
             <h2>Add a Contact</h2>
             <ContactForm
-              key={nextId}
+              key={people.length}
               initial={{...BLANK}}
               onSave={f=>{addPerson(f);}}
               saveLabel="Add to Roster"
+              userId={userId}
             />
           </div>
           {people.length===0
@@ -544,6 +643,7 @@ export default function App() {
                         onSave={f=>savePerson(p.id,f)}
                         onCancel={()=>setEditingId(null)}
                         saveLabel="Save Changes"
+                        userId={userId}
                       />
                     </div>
                   )}
@@ -552,8 +652,8 @@ export default function App() {
             </div>
           }
         </>}
-        {tab==="echomap"&&<EchoMap />}
-        {tab==="game"&&<>
+        {!loading && tab==="echomap"&&<EchoMap />}
+        {!loading && tab==="game"&&<>
           <div className="game-bar">
             <button className={"mode-btn"+(mode==="name"?" active":"")} onClick={()=>setMode("name")}>Name Recall</button>
             <button className={"mode-btn"+(mode==="context"?" active":"")} onClick={()=>setMode("context")}>Context Check</button>
