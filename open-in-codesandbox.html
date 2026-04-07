@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Name Recall → CodeSandbox</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #f0f4ff;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid #c8d4f5;
+    border-radius: 10px;
+    padding: 40px 32px;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 4px 24px rgba(0,51,153,0.08);
+  }
+  .logo { font-size: 36px; margin-bottom: 16px; }
+  h1 { font-size: 22px; font-weight: 800; color: #003399; margin-bottom: 8px; }
+  p { font-size: 14px; color: #666; line-height: 1.6; margin-bottom: 28px; }
+  .btn {
+    display: inline-block;
+    background: #003399;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 14px 28px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    width: 100%;
+    transition: background 0.15s;
+  }
+  .btn:hover { background: #0044cc; }
+  .note { font-size: 12px; color: #aaa; margin-top: 16px; }
+  #status { font-size: 13px; color: #003399; margin-top: 12px; min-height: 20px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">🧠</div>
+  <h1>Name Recall App</h1>
+  <p>Opens your app in CodeSandbox — full file system access, working photo uploads, and a shareable URL.</p>
+  <button class="btn" onclick="launch()">Open in CodeSandbox →</button>
+  <div id="status"></div>
+  <div class="note">You'll be redirected to codesandbox.io</div>
+</div>
+
+<script>
+const APP_JS = `import { useState, useEffect, useRef } from "react";
+
+const css = \`
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body { background: #fff; }
+
+.app {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: #fff;
+  min-height: 100vh;
+  color: #111;
+  font-size: 15px;
+}
+
+/* HEADER */
+.header {
+  background: #003399;
+  color: #fff;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header h1 { font-size: 18px; font-weight: 700; flex: 1; }
+.fs-btn {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.3);
+  color: #fff;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+/* TABS */
+.tabs {
+  display: flex;
+  border-bottom: 2px solid #003399;
+  background: #f0f4ff;
+}
+.tab {
+  flex: 1;
+  padding: 12px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  border: none;
+  background: none;
+  color: #555;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+}
+.tab.active { color: #003399; border-bottom-color: #003399; background: #fff; }
+
+/* LAYOUT */
+.content { padding: 16px; max-width: 600px; margin: 0 auto; }
+
+/* LABELS & INPUTS */
+label.lbl {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #444;
+  margin-bottom: 4px;
+}
+input, select, textarea {
+  width: 100%;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-size: 15px;
+  font-family: inherit;
+  background: #fff;
+  color: #111;
+  outline: none;
+  -webkit-appearance: none;
+}
+input:focus, select:focus, textarea:focus { border-color: #003399; box-shadow: 0 0 0 2px #003399aa; }
+textarea { resize: vertical; min-height: 60px; }
+.hint { font-size: 12px; color: #777; margin-top: 3px; font-style: italic; }
+.field { margin-bottom: 12px; }
+
+/* BUTTONS */
+.btn {
+  display: inline-block;
+  padding: 11px 20px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s;
+}
+.btn:active { opacity: 0.8; }
+.btn-blue { background: #003399; color: #fff; }
+.btn-outline { background: #fff; color: #003399; border: 2px solid #003399; }
+.btn-red { background: #cc0000; color: #fff; }
+.btn-gray { background: #eee; color: #333; border: 1px solid #ccc; }
+.btn-sm { padding: 6px 12px; font-size: 13px; }
+.btn-full { width: 100%; text-align: center; }
+
+/* PHOTO */
+.photo-file-input { display: none; }
+.photo-btn-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.photo-preview { display: flex; align-items: center; gap: 10px; background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; padding: 8px 10px; margin-top: 6px; }
+.photo-preview img { width: 52px; height: 52px; object-fit: cover; border-radius: 3px; border: 1px solid #ccc; }
+.photo-preview .remove { background: none; border: none; color: #cc0000; font-size: 13px; cursor: pointer; text-decoration: underline; font-family: inherit; }
+
+/* ADD PANEL */
+.add-panel { background: #f0f4ff; border: 1px solid #99aadd; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+.add-panel h2 { font-size: 15px; font-weight: 700; color: #003399; margin-bottom: 14px; }
+
+/* ROSTER */
+.roster { display: flex; flex-direction: column; gap: 10px; }
+.person-card { border: 1px solid #ddd; border-radius: 6px; background: #fff; overflow: hidden; }
+.person-main { display: flex; align-items: flex-start; gap: 10px; padding: 12px; }
+.person-thumb { width: 48px; height: 48px; object-fit: cover; border-radius: 4px; border: 1px solid #ccc; flex-shrink: 0; }
+.person-thumb-ph { width: 48px; height: 48px; border-radius: 4px; background: #eee; border: 1px solid #ccc; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.person-body { flex: 1; min-width: 0; }
+.person-name { font-size: 16px; font-weight: 700; margin-bottom: 3px; }
+.ctx-badge { display: inline-block; background: #003399; color: #fff; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 7px; border-radius: 3px; margin-right: 6px; }
+.pips { display: inline-flex; gap: 3px; vertical-align: middle; }
+.pip { width: 7px; height: 7px; border-radius: 50%; background: #ddd; }
+.pip.on { background: #009933; }
+.pip.mid { background: #ff8800; }
+.pip.lo { background: #cc0000; }
+.person-clues { margin-top: 5px; font-size: 12px; color: #555; }
+.person-actions { display: flex; flex-direction: column; gap: 4px; }
+
+/* INLINE EDIT */
+.person-edit { border-top: 1px solid #eee; padding: 14px; background: #fafafa; }
+
+/* GAME */
+.game-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.mode-btn { padding: 8px 14px; font-size: 13px; font-weight: 700; border: 2px solid #bbb; border-radius: 4px; background: #fff; color: #555; cursor: pointer; font-family: inherit; }
+.mode-btn.active { border-color: #003399; color: #003399; background: #f0f4ff; }
+
+.score-row { display: flex; gap: 0; border: 1px solid #ddd; border-radius: 6px; overflow: hidden; margin-bottom: 16px; }
+.score-cell { flex: 1; padding: 10px 8px; text-align: center; border-right: 1px solid #ddd; }
+.score-cell:last-child { border-right: none; }
+.score-n { font-size: 24px; font-weight: 700; line-height: 1; }
+.score-n.g { color: #009933; }
+.score-n.r { color: #cc0000; }
+.score-n.a { color: #ff8800; }
+.score-l { font-size: 10px; text-transform: uppercase; font-weight: 600; color: #999; margin-top: 2px; }
+
+.prog { height: 4px; background: #eee; border-radius: 2px; margin-bottom: 16px; overflow: hidden; }
+.prog-fill { height: 100%; background: #003399; transition: width 0.3s; }
+.prog-txt { display: flex; justify-content: space-between; font-size: 12px; color: #888; margin-bottom: 4px; }
+
+/* CARD */
+.card { border: 2px solid #003399; border-radius: 8px; padding: 20px 16px; margin-bottom: 14px; background: #fff; min-height: 140px; }
+.card-ctx { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #003399; margin-bottom: 12px; }
+.pause-state { text-align: center; padding: 16px 0; }
+.pause-big { font-size: 20px; font-style: italic; color: #bbb; margin-bottom: 8px; }
+.pause-sub { font-size: 12px; color: #ccc; text-transform: uppercase; letter-spacing: 1px; }
+.card-body { display: flex; gap: 14px; align-items: flex-start; }
+.card-photo { width: 72px; height: 72px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; flex-shrink: 0; }
+.card-photo-ph { width: 72px; height: 72px; border-radius: 4px; background: #f5f5f5; border: 1px solid #eee; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+.clues { flex: 1; }
+.clue-row { display: flex; gap: 8px; margin-bottom: 7px; }
+.clue-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #999; min-width: 48px; padding-top: 2px; flex-shrink: 0; }
+.clue-val { font-size: 14px; color: #333; line-height: 1.4; }
+.ctx-reveal { text-align: center; }
+.ctx-reveal img { width: 80px; height: 80px; object-fit: cover; border-radius: 4px; border: 1px solid #ddd; margin-bottom: 8px; }
+.ctx-name { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+.ctx-hook { font-size: 13px; color: #666; font-style: italic; }
+
+/* ANSWER */
+.ans-row { display: flex; gap: 8px; margin-bottom: 8px; }
+.ans-row input { flex: 1; font-size: 16px; }
+
+.fb { padding: 12px 14px; border-radius: 4px; margin-bottom: 12px; font-size: 14px; font-weight: 600; }
+.fb.ok { background: #d4edda; border: 1px solid #28a745; color: #155724; }
+.fb.no { background: #f8d7da; border: 1px solid #dc3545; color: #721c24; }
+.fb .reveal { font-size: 18px; font-weight: 700; display: block; margin-top: 3px; color: #111; }
+
+.choices { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.choice { padding: 12px; border: 2px solid #ddd; border-radius: 4px; background: #fff; font-size: 13px; font-weight: 600; cursor: pointer; font-family: inherit; text-align: center; transition: all 0.1s; }
+.choice:hover:not(:disabled) { border-color: #003399; color: #003399; }
+.choice.correct { border-color: #28a745; background: #d4edda; color: #155724; }
+.choice.wrong { border-color: #dc3545; background: #f8d7da; color: #721c24; }
+.choice:disabled { cursor: default; }
+
+.hint-row { text-align: right; margin-bottom: 6px; }
+.hint-btn { background: none; border: none; color: #999; font-size: 12px; text-decoration: underline; cursor: pointer; font-family: inherit; }
+.hint-val { font-size: 12px; color: #666; font-style: italic; margin-bottom: 6px; }
+
+/* RESULTS */
+.results { border: 2px solid #003399; border-radius: 8px; padding: 28px 16px; text-align: center; }
+.results h2 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+.pct { font-size: 56px; font-weight: 900; color: #003399; line-height: 1; margin: 12px 0 4px; }
+.results-sub { color: #666; font-size: 14px; margin-bottom: 20px; }
+.missed-head { font-size: 12px; font-weight: 700; text-transform: uppercase; color: #999; border-top: 1px solid #eee; padding: 14px 0 8px; text-align: left; }
+.missed-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid #f0f0f0; gap: 8px; text-align: left; }
+.mn { font-weight: 700; font-size: 14px; }
+.mc { font-size: 11px; color: #999; text-transform: uppercase; white-space: nowrap; }
+.tip { font-size: 11px; color: #888; font-style: italic; text-align: right; }
+
+.empty { text-align: center; padding: 40px 16px; color: #bbb; }
+.empty .icon { font-size: 32px; margin-bottom: 10px; }
+.empty p { font-size: 14px; line-height: 1.6; }
+.enter-hint { font-size: 11px; color: #ccc; text-align: center; margin-top: 8px; }
+
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+\`;
+
+const CONTEXTS = ["Board","Donor","Foundation","Sponsor","Colleague","Volunteer","Prospect","Partner","Staff","Other"];
+const BLANK = { name:"", context:"Donor", photo:"", visual:"", hook:"", met:"" };
+const SAMPLE = [
+  { id:1, name:"Margaret Chen", context:"Board", photo:"", visual:"Silver bob haircut, silk scarf", hook:"Chairs governance committee, passionate about equity in arts access", met:"Fall gala, two years ago" },
+  { id:2, name:"Robert Ashford", context:"Donor", photo:"", visual:"Tall, wire-rim glasses, firm handshake", hook:"Major gift prospect, education programs, retired CFO", met:"Donor cultivation luncheon, spring" },
+  { id:3, name:"Patricia Voss", context:"Foundation", photo:"", visual:"Petite, direct eye contact, always early", hook:"Executive committee, former attorney, sharp governance questions", met:"First foundation board meeting" },
+];
+
+function shuffle(arr) {
+  const a=[...arr];
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}
+  return a;
+}
+function nameMatch(input,name){
+  const i=input.toLowerCase().replace(/[^a-z\\s]/g,"").trim();
+  const n=name.toLowerCase().replace(/[^a-z\\s]/g,"").trim();
+  if(i===n)return true;
+  const parts=n.split(" ");
+  if(parts.some(p=>p===i))return true;
+  if(n.includes(i)||i.includes(parts[0]))return true;
+  return false;
+}
+function buildQueue(people,scores){
+  const q=[];
+  people.forEach(p=>{
+    const lvl=scores[p.id]??0;
+    const reps=lvl<=0?3:lvl===1?2:1;
+    for(let r=0;r<reps;r++)q.push(p);
+  });
+  return shuffle(q);
+}
+function getCtxChoices(correct,all){
+  const others=[...new Set(all.map(p=>p.context).filter(c=>c!==correct))];
+  return shuffle([correct,...shuffle(others).slice(0,3)]);
+}
+
+let uid=0;
+function PhotoField({ value, onChange }) {
+  const id = useRef("pf-"+(++uid)).current;
+  const [urlMode, setUrlMode] = useState(false);
+  const [urlVal, setUrlVal] = useState("");
+  const [urlErr, setUrlErr] = useState(false);
+
+  function handleFile(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => onChange(ev.target.result);
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  }
+
+  function commitUrl(v) {
+    const t = v.trim();
+    if (!t) { onChange(""); setUrlErr(false); return; }
+    const img = new Image();
+    img.onload = () => { onChange(t); setUrlErr(false); };
+    img.onerror = () => setUrlErr(true);
+    img.src = t;
+  }
+
+  return (
+    <div>
+      <input id={id} type="file" accept="image/*" className="photo-file-input" onChange={handleFile} />
+      {value ? (
+        <div className="photo-preview">
+          <img src={value} alt="preview" onError={e=>e.target.style.display="none"} />
+          <div style={{flex:1}}>
+            <div style={{fontSize:13,fontWeight:600,marginBottom:4}}>Photo added \u2713</div>
+            <label htmlFor={id} style={{fontSize:12,color:"#003399",cursor:"pointer",textDecoration:"underline",display:"inline"}}>Change</label>
+            {" \u00b7 "}
+            <button className="remove" style={{background:"none",border:"none",color:"#cc0000",fontSize:12,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}} onClick={()=>onChange("")}>Remove</button>
+          </div>
+        </div>
+      ) : (
+        <div className="photo-btn-row">
+          <label htmlFor={id} className="btn btn-outline btn-sm" style={{cursor:"pointer"}}>
+            \uD83D\uDCF7 Choose Photo
+          </label>
+          <button className="btn btn-gray btn-sm" onClick={()=>setUrlMode(u=>!u)}>
+            {urlMode ? "Hide URL" : "Paste URL"}
+          </button>
+        </div>
+      )}
+      {urlMode && !value && (
+        <div style={{marginTop:8}}>
+          <input
+            value={urlVal}
+            onChange={e=>{setUrlVal(e.target.value);setUrlErr(false);}}
+            onBlur={e=>commitUrl(e.target.value)}
+            placeholder="Paste image URL here..."
+          />
+          {urlErr && <div style={{fontSize:12,color:"#cc0000",marginTop:3}}>Couldn't load that URL \u2014 try a direct image link</div>}
+          <div className="hint">Google Photos \u2192 Share \u2192 Copy link</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ContactForm({ initial, onSave, onCancel, saveLabel }) {
+  const [f, setF] = useState({...initial});
+  const set = k => v => setF(p=>({...p,[k]:v}));
+  const valid = f.name.trim().length > 0;
+
+  return (
+    <>
+      <div className="row2" style={{marginBottom:10}}>
+        <div className="field">
+          <label className="lbl">Full Name</label>
+          <input value={f.name} onChange={e=>set("name")(e.target.value)}
+            placeholder="e.g. Patricia Voss"
+            onKeyDown={e=>e.key==="Enter"&&valid&&onSave(f)} />
+        </div>
+        <div className="field">
+          <label className="lbl">Context</label>
+          <select value={f.context} onChange={e=>set("context")(e.target.value)}>
+            {CONTEXTS.map(c=><option key={c}>{c}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="field">
+        <label className="lbl">Photo</label>
+        <PhotoField value={f.photo} onChange={set("photo")} />
+        <div className="hint">The face is the strongest anchor \u2014 snap one right after meeting.</div>
+      </div>
+      <div className="field">
+        <label className="lbl">Visual Anchor</label>
+        <input value={f.visual} onChange={e=>set("visual")(e.target.value)}
+          placeholder="What's distinctive? Hair, posture, glasses, how they dress..." />
+        <div className="hint">What you'd notice from across the room.</div>
+      </div>
+      <div className="field">
+        <label className="lbl">Connection Hook</label>
+        <textarea value={f.hook} onChange={e=>set("hook")(e.target.value)}
+          placeholder="What do they care about? Their role, passion, what you talked about?" />
+        <div className="hint">Attaching a name to meaning is the most durable encoding pathway.</div>
+      </div>
+      <div className="field">
+        <label className="lbl">Where / When You Met</label>
+        <input value={f.met} onChange={e=>set("met")(e.target.value)}
+          placeholder="e.g. Spring gala, donor luncheon, board retreat..." />
+        <div className="hint">Context cues are powerful retrieval triggers in social settings.</div>
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:4}}>
+        <button className="btn btn-blue" onClick={()=>valid&&onSave(f)} disabled={!valid}>
+          {saveLabel||"Save"}
+        </button>
+        {onCancel && <button className="btn btn-gray" onClick={onCancel}>Cancel</button>}
+      </div>
+    </>
+  );
+}
+
+export default function App() {
+  const [tab, setTab] = useState("roster");
+  const [people, setPeople] = useState(SAMPLE);
+  const [nextId, setNextId] = useState(20);
+  const [scores, setScores] = useState({});
+  const [editingId, setEditingId] = useState(null);
+  const [isFs, setIsFs] = useState(false);
+  const appRef = useRef(null);
+
+  const [mode, setMode] = useState("name");
+  const [filterCtx, setFilterCtx] = useState("All");
+  const [queue, setQueue] = useState([]);
+  const [qi, setQi] = useState(0);
+  const [phase, setPhase] = useState("pause");
+  const [answer, setAnswer] = useState("");
+  const [fb, setFb] = useState(null);
+  const [ctxChoices, setCtxChoices] = useState([]);
+  const [correct, setCorrect] = useState(0);
+  const [wrong, setWrong] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [bestStreak, setBestStreak] = useState(0);
+  const [missed, setMissed] = useState([]);
+  const [hintShown, setHintShown] = useState(false);
+  const [over, setOver] = useState(false);
+  const inputRef = useRef(null);
+  const pauseTimer = useRef(null);
+
+  function toggleFs() {
+    if (!document.fullscreenElement) appRef.current?.requestFullscreen().catch(()=>{});
+    else document.exitFullscreen().catch(()=>{});
+  }
+  useEffect(()=>{
+    const fn=()=>setIsFs(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange",fn);
+    return()=>document.removeEventListener("fullscreenchange",fn);
+  },[]);
+
+  useEffect(()=>{
+    if(tab==="game") initGame();
+    return()=>clearTimeout(pauseTimer.current);
+  },[tab,mode,filterCtx]);
+
+  function initGame(){
+    const pool=filterCtx==="All"?people:people.filter(p=>p.context===filterCtx);
+    if(!pool.length)return;
+    const q=buildQueue(pool,scores);
+    setQueue(q);setQi(0);setPhase("pause");
+    setAnswer("");setFb(null);
+    setCorrect(0);setWrong(0);setStreak(0);
+    setMissed([]);setHintShown(false);setOver(false);
+    if(mode==="context"&&q.length)setCtxChoices(getCtxChoices(q[0].context,people));
+    startPause();
+  }
+  function startPause(){
+    clearTimeout(pauseTimer.current);
+    pauseTimer.current=setTimeout(()=>{setPhase("active");setTimeout(()=>inputRef.current?.focus(),80);},1800);
+  }
+  function advancePause(){
+    clearTimeout(pauseTimer.current);
+    setPhase("active");
+    setTimeout(()=>inputRef.current?.focus(),80);
+  }
+  function recordResult(id,ok){
+    setScores(s=>({...s,[id]:Math.max(0,Math.min(4,(s[id]??0)+(ok?1:-1)))}));
+    if(ok){setCorrect(c=>c+1);setStreak(s=>{const ns=s+1;setBestStreak(b=>Math.max(b,ns));return ns;});}
+    else{setWrong(w=>w+1);setStreak(0);}
+  }
+  function submitName(){
+    if(!answer.trim()||fb)return;
+    const cur=queue[qi];
+    const ok=nameMatch(answer,cur.name);
+    setFb({ok,actual:cur.name});
+    recordResult(cur.id,ok);
+    if(!ok)setMissed(m=>[...m,cur]);
+  }
+  function submitCtx(choice){
+    if(fb)return;
+    const cur=queue[qi];
+    const ok=choice===cur.context;
+    setFb({ok,actual:cur.context,chosen:choice});
+    recordResult(cur.id,ok);
+    if(!ok)setMissed(m=>[...m,cur]);
+  }
+  function next(){
+    const nqi=qi+1;
+    if(nqi>=queue.length){setOver(true);return;}
+    setQi(nqi);setPhase("pause");setAnswer("");setFb(null);setHintShown(false);
+    if(mode==="context")setCtxChoices(getCtxChoices(queue[nqi].context,people));
+    startPause();
+  }
+  function handleKey(e){
+    if(e.key!=="Enter")return;
+    if(phase==="pause"){advancePause();return;}
+    if(mode==="name"){if(!fb)submitName();else next();}
+  }
+
+  function addPerson(f){setPeople(p=>[...p,{id:nextId,...f,name:f.name.trim()}]);setNextId(n=>n+1);}
+  function savePerson(id,f){setPeople(ps=>ps.map(p=>p.id===id?{...p,...f,name:f.name.trim()}:p));setEditingId(null);}
+  function deletePerson(id){if(window.confirm("Remove this contact?"))setPeople(ps=>ps.filter(p=>p.id!==id));}
+
+  function pips(id){
+    const lvl=scores[id]??0;
+    return[0,1,2,3].map(i=>{
+      const on=i<lvl;
+      return<span key={i} className={on?(lvl>=3?"pip on":lvl>=2?"pip mid":"pip lo"):"pip"}/>;
+    });
+  }
+  function missingHint(p){
+    const m=[];
+    if(!p.photo&&!p.visual)m.push("visual anchor");
+    if(!p.hook)m.push("connection hook");
+    if(!p.met)m.push("meeting context");
+    return m.length?"Add: "+m.join(", "):"Needs more repetitions";
+  }
+
+  const cur=queue[qi],total=queue.length;
+  const pct=total?Math.round((correct/total)*100):0;
+  const usedCtx=[...new Set(people.map(p=>p.context))];
+
+  return (
+    <div className="app" ref={appRef}>
+      <style>{css}</style>
+      <div className="header">
+        <h1>Name Recall</h1>
+        <button className="fs-btn" onClick={toggleFs}>{isFs?"\u2715 Exit":"\u2922 Full Screen"}</button>
+      </div>
+      <div className="tabs">
+        {[["roster","Roster ("+people.length+")"],["game","Practice"]].map(([t,l])=>(
+          <button key={t} className={"tab"+(tab===t?" active":"")} onClick={()=>setTab(t)}>{l}</button>
+        ))}
+      </div>
+      <div className="content">
+        {tab==="roster"&&<>
+          <div className="add-panel">
+            <h2>Add a Contact</h2>
+            <ContactForm
+              key={nextId}
+              initial={{...BLANK}}
+              onSave={f=>{addPerson(f);}}
+              saveLabel="Add to Roster"
+            />
+          </div>
+          {people.length===0
+            ?<div className="empty"><div className="icon">\uD83E\uDD1D</div><p>Your roster is empty.<br/>Add people to start practicing.</p></div>
+            :<div className="roster">
+              {people.map(p=>(
+                <div className="person-card" key={p.id}>
+                  <div className="person-main">
+                    {p.photo
+                      ?<img className="person-thumb" src={p.photo} alt={p.name} onError={e=>e.target.style.display="none"}/>
+                      :<div className="person-thumb-ph">\uD83D\uDC64</div>
+                    }
+                    <div className="person-body">
+                      <div className="person-name">{p.name}</div>
+                      <div style={{marginBottom:4}}>
+                        <span className="ctx-badge">{p.context}</span>
+                        <span className="pips">{pips(p.id)}</span>
+                      </div>
+                      {(p.hook||p.met)&&<div className="person-clues">
+                        {p.hook&&<div>\uD83D\uDD17 {p.hook}</div>}
+                        {p.met&&<div>\uD83D\uDCCD {p.met}</div>}
+                      </div>}
+                    </div>
+                    <div className="person-actions">
+                      <button className="btn btn-gray btn-sm"
+                        onClick={()=>setEditingId(editingId===p.id?null:p.id)}>
+                        {editingId===p.id?"\u25B2 Done":"\u270E Edit"}
+                      </button>
+                      <button className="btn btn-sm" style={{background:"#fff",border:"1px solid #eee",color:"#cc0000"}}
+                        onClick={()=>deletePerson(p.id)}>Delete</button>
+                    </div>
+                  </div>
+                  {editingId===p.id&&(
+                    <div className="person-edit">
+                      <ContactForm
+                        initial={{name:p.name,context:p.context,photo:p.photo||"",visual:p.visual||"",hook:p.hook||"",met:p.met||""}}
+                        onSave={f=>savePerson(p.id,f)}
+                        onCancel={()=>setEditingId(null)}
+                        saveLabel="Save Changes"
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          }
+        </>}
+        {tab==="game"&&<>
+          <div className="game-bar">
+            <button className={"mode-btn"+(mode==="name"?" active":"")} onClick={()=>setMode("name")}>Name Recall</button>
+            <button className={"mode-btn"+(mode==="context"?" active":"")} onClick={()=>setMode("context")}>Context Check</button>
+            <select value={filterCtx} onChange={e=>setFilterCtx(e.target.value)} style={{flex:1,minWidth:0}}>
+              <option value="All">All Contexts</option>
+              {usedCtx.map(c=><option key={c}>{c}</option>)}
+            </select>
+            <button className="btn btn-outline btn-sm" onClick={initGame}>\u21BA</button>
+          </div>
+          {people.length===0
+            ?<div className="empty"><div className="icon">\uD83D\uDCCB</div><p>Add contacts to your roster first.</p></div>
+            :over
+            ?<div className="results">
+              <h2>Session Complete</h2>
+              <div className="pct">{pct}%</div>
+              <div className="results-sub">{correct} of {total} correct \u00b7 Best streak: {bestStreak}</div>
+              {missed.length>0&&<>
+                <div className="missed-head">Names to reinforce</div>
+                {missed.map((m,i)=>(
+                  <div className="missed-row" key={i}>
+                    <span className="mn">{m.name}</span>
+                    <span className="mc">{m.context}</span>
+                    <span className="tip">{missingHint(m)}</span>
+                  </div>
+                ))}
+              </>}
+              <button className="btn btn-blue btn-full" style={{marginTop:20}} onClick={initGame}>Practice Again</button>
+            </div>
+            :cur&&<>
+              <div className="score-row">
+                <div className="score-cell"><div className="score-n g">{correct}</div><div className="score-l">Correct</div></div>
+                <div className="score-cell"><div className="score-n r">{wrong}</div><div className="score-l">Missed</div></div>
+                <div className="score-cell"><div className="score-n a">{streak}</div><div className="score-l">Streak</div></div>
+              </div>
+              <div className="prog-txt"><span>Card {qi+1} of {total}</span><span>{total-qi-1} left</span></div>
+              <div className="prog"><div className="prog-fill" style={{width:((qi/total)*100)+"%"}}/></div>
+              <div className="card" onClick={phase==="pause"?advancePause:undefined} style={{cursor:phase==="pause"?"pointer":"default"}}>
+                <div className="card-ctx">
+                  {cur.context} {phase==="pause"
+                    ?(mode==="name"?"\u00b7 visualize them":"\u00b7 pause")
+                    :(mode==="name"?"\u00b7 who is this?":"\u00b7 which context?")}
+                </div>
+                {phase==="pause"
+                  ?<div className="pause-state">
+                    <div className="pause-big">Take a breath.</div>
+                    <div className="pause-sub">Tap or press Enter when ready</div>
+                  </div>
+                  :mode==="name"
+                  ?<div className="card-body">
+                    {cur.photo
+                      ?<img className="card-photo" src={cur.photo} alt="" onError={e=>e.target.style.display="none"}/>
+                      :<div className="card-photo-ph">\uD83D\uDC64</div>
+                    }
+                    <div className="clues">
+                      {cur.visual&&<div className="clue-row"><span className="clue-tag">Visual</span><span className="clue-val">{cur.visual}</span></div>}
+                      {cur.hook&&<div className="clue-row"><span className="clue-tag">Hook</span><span className="clue-val">{cur.hook}</span></div>}
+                      {cur.met&&<div className="clue-row"><span className="clue-tag">Met</span><span className="clue-val">{cur.met}</span></div>}
+                      {!cur.photo&&!cur.visual&&!cur.hook&&!cur.met&&<div style={{color:"#aaa",fontStyle:"italic",fontSize:13}}>No clues \u2014 recall from memory.</div>}
+                    </div>
+                  </div>
+                  :<div className="ctx-reveal">
+                    {cur.photo&&<img src={cur.photo} alt="" onError={e=>e.target.style.display="none"}/>}
+                    <div className="ctx-name">{cur.name}</div>
+                    {cur.hook&&<div className="ctx-hook">{cur.hook}</div>}
+                  </div>
+                }
+              </div>
+              {fb&&<div className={"fb "+(fb.ok?"ok":"no")}>
+                {fb.ok?"\u2713 Correct!":<>"\u2717 "<span className="reveal">{fb.actual}</span></>}
+              </div>}
+              {phase==="active"&&<>
+                {mode==="name"&&!fb&&<>
+                  <div className="ans-row">
+                    <input ref={inputRef} value={answer} onChange={e=>setAnswer(e.target.value)}
+                      onKeyDown={handleKey} placeholder="Type the name..." />
+                    <button className="btn btn-blue" onClick={submitName}>Check</button>
+                  </div>
+                  {!hintShown
+                    ?<div className="hint-row"><button className="hint-btn" onClick={()=>setHintShown(true)}>Stuck? Show first initial</button></div>
+                    :<div className="hint-val">First name starts with: <strong>{cur.name[0]}</strong></div>
+                  }
+                </>}
+                {mode==="name"&&fb&&<button className="btn btn-outline btn-full" onClick={next}>Next \u2192</button>}
+                {mode==="context"&&!fb&&<div className="choices">
+                  {ctxChoices.map(c=><button key={c} className="choice" onClick={()=>submitCtx(c)}>{c}</button>)}
+                </div>}
+                {mode==="context"&&fb&&<>
+                  <div className="choices">
+                    {ctxChoices.map(c=><button key={c} disabled
+                      className={"choice"+(c===cur.context?" correct":fb.chosen===c&&!fb.ok?" wrong":"")}>{c}</button>)}
+                  </div>
+                  <button className="btn btn-outline btn-full" style={{marginTop:10}} onClick={next}>Next \u2192</button>
+                </>}
+                <div className="enter-hint">Enter to submit \u00b7 Enter again to advance</div>
+              </>}
+            </>
+          }
+        </>}
+      </div>
+    </div>
+  );
+}
+`;
+
+const INDEX_JS = `import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App";
+
+const rootElement = document.getElementById("root");
+const root = createRoot(rootElement);
+root.render(
+  <StrictMode>
+    <App />
+  </StrictMode>
+);
+`;
+
+const INDEX_HTML = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Name Recall</title>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
+`;
+
+const PACKAGE_JSON = JSON.stringify({
+  name: "name-recall",
+  version: "1.0.0",
+  description: "Name recall practice app with spaced repetition",
+  main: "src/index.js",
+  dependencies: {
+    react: "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "^5.0.1"
+  },
+  scripts: {
+    start: "react-scripts start",
+    build: "react-scripts build"
+  },
+  browserslist: {
+    production: [">0.2%", "not dead", "not op_mini all"],
+    development: ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
+  }
+}, null, 2);
+
+function launch() {
+  const status = document.getElementById("status");
+  status.textContent = "Preparing sandbox...";
+
+  const files = {
+    "src/App.js":       { content: APP_JS },
+    "src/index.js":     { content: INDEX_JS },
+    "public/index.html":{ content: INDEX_HTML },
+    "package.json":     { content: PACKAGE_JSON }
+  };
+
+  try {
+    const params = LZString.compressToBase64(JSON.stringify({ files }))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "!");
+
+    status.textContent = "Opening CodeSandbox...";
+
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = "https://codesandbox.io/api/v1/sandboxes/define";
+    form.target = "_blank";
+
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "parameters";
+    input.value = params;
+    form.appendChild(input);
+
+    document.body.appendChild(form);
+    form.submit();
+    document.body.removeChild(form);
+
+    status.textContent = "Sandbox opened in new tab \u2713";
+  } catch(e) {
+    status.textContent = "Error: " + e.message;
+  }
+}
+</script>
+</body>
+</html>
